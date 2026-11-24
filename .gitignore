@@ -1,0 +1,25 @@
+# Carpetas privadas de documentos y registros locales (NUNCA subir actas reales a GitHub)
+01_Escaneos_Originales/
+02_Actas_Con_Hash/
+datos/
+
+# Entornos virtuales y compilación Python
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Empaquetado PyInstaller (.exe)
+dist/
+build/
+*.spec
+
+# Archivos temporales del sistema operativo
+Thumbs.db
+.DS_Store
+desktop.ini
