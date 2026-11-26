@@ -179,9 +179,12 @@ def test_find_by_sesion(tmp_path: Path):
 def test_backup_zip(tmp_path: Path, monkeypatch):
     """Verifica la generación del archivo ZIP de respaldo preventivo."""
     import zipfile
+    import src.config as cfg_mod
     import src.ui.tab_records as tab_rec_mod
 
     file_reg = tmp_path / "datos" / "registro_actas.json"
+    file_enc = tmp_path / "datos" / "registro_actas.enc"
+    file_vault = tmp_path / "datos" / "vault.json"
     dir_orig = tmp_path / "01_Escaneos_Originales"
     dir_hash = tmp_path / "02_Actas_Con_Hash"
     dir_exp = tmp_path / "datos" / "exportaciones"
@@ -194,9 +197,11 @@ def test_backup_zip(tmp_path: Path, monkeypatch):
     (dir_orig / "orig_01.pdf").write_bytes(b"orig")
     (dir_hash / "orig_01_CON_HASH.pdf").write_bytes(b"hash")
 
-    monkeypatch.setattr(tab_rec_mod, "FILE_REGISTRO", file_reg)
-    monkeypatch.setattr(tab_rec_mod, "DIR_ORIGINALES", dir_orig)
-    monkeypatch.setattr(tab_rec_mod, "DIR_CON_HASH", dir_hash)
+    monkeypatch.setattr(cfg_mod, "FILE_REGISTRO", file_reg)
+    monkeypatch.setattr(cfg_mod, "FILE_REGISTRO_ENC", file_enc)
+    monkeypatch.setattr(cfg_mod, "FILE_VAULT", file_vault)
+    monkeypatch.setattr(cfg_mod, "DIR_ORIGINALES", dir_orig)
+    monkeypatch.setattr(cfg_mod, "DIR_CON_HASH", dir_hash)
 
     zip_path = tab_rec_mod.TabRecords.crear_respaldo_zip(output_dir=dir_exp)
     assert zip_path.exists()

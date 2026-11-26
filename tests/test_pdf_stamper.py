@@ -158,3 +158,33 @@ def test_rotated_page_stamping(tmp_path: Path, monkeypatch):
     verif = fitz.open(str(out_path))
     assert sha_orig in verif[0].get_text()
     verif.close()
+
+
+def test_pdf_owner_protection_lectura_libre_sin_edicion(tmp_path: Path, monkeypatch):
+    """Con owner_password, el PDF se abre sin clave para lectura, pero bloquea edición."""
+    monkeypatch.setattr(pdf_stamper_mod, "DIR_ORIGINALES", tmp_path / "orig")
+    monkeypatch.setattr(pdf_stamper_mod, "DIR_CON_HASH", tmp_path / "hash")
+
+    pdf_in = tmp_path / "acta_protegida.pdf"
+    d = fitz.open()
+    d.new_page().insert_text((50, 100), "Contenido oficial")
+    d.save(str(pdf_in))
+    d.close()
+
+    out_path, _, sha_gen, _, _ = estampar_acta_pdf(
+        pdf_in,
+        "Ordinaria",
+        "020-2026",
+        "26/11/2026",
+        owner_password="OwnerSecretPassword123",
+    )
+
+    doc_out = fitz.open(str(out_path))
+    assert doc_out.needs_pass == 0  # Lectura libre para legisladores y Contraloría
+    assert (doc_out.permissions & fitz.PDF_PERM_MODIFY) == 0
+    assert doc_out.authenticate("OwnerSecretPassword123") > 0
+    assert (doc_out.permissions & fitz.PDF_PERM_MODIFY) != 0
+    doc_out.close()
+
+    ok, _ = verificar_sha256(out_path, sha_gen)
+    assert ok is True

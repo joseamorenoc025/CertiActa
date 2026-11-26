@@ -16,13 +16,8 @@ import zipfile
 
 import customtkinter as ctk
 
-from src.config import (
-    DIR_CON_HASH,
-    DIR_EXPORTACIONES,
-    DIR_ORIGINALES,
-    FILE_REGISTRO,
-    TIPOS_SESION,
-)
+import src.config as cfg
+from src.config import TIPOS_SESION
 from src.core.models import ActaRecord
 from src.repository.registry_repo import RegistryRepository
 
@@ -485,19 +480,20 @@ class TabRecords(ctk.CTkFrame):
 
     @staticmethod
     def crear_respaldo_zip(output_dir: Optional[Path] = None) -> Path:
-        """Empaqueta el registro JSON y las carpetas de PDFs en un archivo ZIP con marca de tiempo."""
-        dest_dir = Path(output_dir) if output_dir else DIR_EXPORTACIONES
+        """Empaqueta el registro (JSON o cifrado) y las carpetas de PDFs en un archivo ZIP."""
+        dest_dir = Path(output_dir) if output_dir else cfg.DIR_EXPORTACIONES
         dest_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         zip_path = dest_dir / f"respaldo_certiacta_{timestamp}.zip"
 
         with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            if FILE_REGISTRO.exists():
-                zf.write(FILE_REGISTRO, arcname=f"datos/{FILE_REGISTRO.name}")
+            for data_file in (cfg.FILE_REGISTRO, cfg.FILE_REGISTRO_ENC, cfg.FILE_VAULT):
+                if data_file.exists():
+                    zf.write(data_file, arcname=f"datos/{data_file.name}")
 
             for folder_name, folder_path in (
-                ("01_Escaneos_Originales", DIR_ORIGINALES),
-                ("02_Actas_Con_Hash", DIR_CON_HASH),
+                ("01_Escaneos_Originales", cfg.DIR_ORIGINALES),
+                ("02_Actas_Con_Hash", cfg.DIR_CON_HASH),
             ):
                 if folder_path.exists():
                     for file_path in folder_path.rglob("*"):

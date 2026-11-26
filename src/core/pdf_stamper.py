@@ -8,8 +8,13 @@ import shutil
 from typing import Optional
 import fitz  # PyMuPDF
 
-from src.config import DIR_CON_HASH, DIR_ORIGINALES
+import src.config as cfg
 from src.core.hasher import calcular_sha256
+
+_ORIG_DEFAULT = cfg.DIR_ORIGINALES
+_HASH_DEFAULT = cfg.DIR_CON_HASH
+DIR_ORIGINALES = cfg.DIR_ORIGINALES
+DIR_CON_HASH = cfg.DIR_CON_HASH
 
 
 class PDFStampError(Exception):
@@ -25,6 +30,7 @@ def estampar_acta_pdf(
     guardar_copia_en_originales: bool = True,
     hash_precalculado: Optional[str] = None,
     es_sustitucion: bool = False,
+    owner_password: Optional[str] = None,
 ) -> tuple[Path, str, str, int, Path]:
     """
     Procesa un PDF original escaneado:
@@ -49,10 +55,13 @@ def estampar_acta_pdf(
     sha256_hash = hash_precalculado or calcular_sha256(path_orig)
 
     # 2. Resguardo inmutable en 01_Escaneos_Originales si se solicita y no está ya allí
-    DIR_ORIGINALES.mkdir(parents=True, exist_ok=True)
-    DIR_CON_HASH.mkdir(parents=True, exist_ok=True)
+    target_orig_dir = DIR_ORIGINALES if DIR_ORIGINALES != _ORIG_DEFAULT else cfg.DIR_ORIGINALES
+    target_hash_dir = DIR_CON_HASH if DIR_CON_HASH != _HASH_DEFAULT else cfg.DIR_CON_HASH
 
-    ruta_resguardo = DIR_ORIGINALES / path_orig.name
+    target_orig_dir.mkdir(parents=True, exist_ok=True)
+    target_hash_dir.mkdir(parents=True, exist_ok=True)
+
+    ruta_resguardo = target_orig_dir / path_orig.name
     # Si la ruta seleccionada no es ya la que está en DIR_ORIGINALES, copiamos
     if guardar_copia_en_originales and path_orig != ruta_resguardo:
         try:
@@ -61,7 +70,7 @@ def estampar_acta_pdf(
                 existente_hash = calcular_sha256(ruta_resguardo)
                 if existente_hash != sha256_hash:
                     stem = path_orig.stem
-                    ruta_resguardo = DIR_ORIGINALES / f"{stem}_{sha256_hash[:8]}.pdf"
+                    ruta_resguardo = target_orig_dir / f"{stem}_{sha256_hash[:8]}.pdf"
                     shutil.copy2(path_orig, ruta_resguardo)
             else:
                 shutil.copy2(path_orig, ruta_resguardo)
@@ -76,9 +85,9 @@ def estampar_acta_pdf(
     # 3. Definir nombre y ruta de salida en 02_Actas_Con_Hash (con prevención de colisiones)
     nombre_base = path_orig.stem
     nombre_salida = f"{nombre_base}_CON_HASH.pdf"
-    ruta_salida = DIR_CON_HASH / nombre_salida
+    ruta_salida = target_hash_dir / nombre_salida
     if ruta_salida.exists() and not es_sustitucion:
-        ruta_salida = DIR_CON_HASH / f"{nombre_base}_{sha256_hash[:8]}_CON_HASH.pdf"
+        ruta_salida = target_hash_dir / f"{nombre_base}_{sha256_hash[:8]}_CON_HASH.pdf"
 
     doc = None
     try:
@@ -168,14 +177,23 @@ def estampar_acta_pdf(
         meta["producer"] = "Verificador de Actas - Hash SHA-256 (PyMuPDF Engine)"
         doc.set_metadata(meta)
 
-        # Guardar en nuevo archivo con compresión y linearización
+        # Guardar en nuevo archivo con compresión y protección opcional de edición
+        save_kwargs: dict = {
+            "garbage": 4,
+            "deflate": True,
+            "clean": True,
+        }
+        if owner_password:
+            perms = int(fitz.PDF_PERM_PRINT | fitz.PDF_PERM_ACCESSIBILITY | fitz.PDF_PERM_COPY)
+            save_kwargs.update({
+                "encryption": fitz.PDF_ENCRYPT_AES_256,
+                "user_pw": "",
+                "owner_pw": owner_password,
+                "permissions": perms,
+            })
+
         try:
-            doc.save(
-                str(ruta_salida),
-                garbage=4,
-                deflate=True,
-                clean=True,
-            )
+            doc.save(str(ruta_salida), **save_kwargs)
         except PermissionError as pe:
             raise PDFStampError(
                 "El archivo PDF de destino está abierto en otro programa (Adobe Reader, Edge, etc.). "

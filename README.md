@@ -96,12 +96,13 @@ CertiActa/
 
 ### Opción B: Compilar Ejecutable Independiente (`.exe`)
 
-Para distribuir en equipos sin Python instalado (ideal para publicar en *GitHub Releases*):
+Para distribuir en equipos sin Python instalado (o descargar directamente desde **GitHub Releases**):
 
 ```powershell
-pip install pyinstaller
-pyinstaller --noconfirm --onedir --windowed --icon "assets/icon.ico" --add-data "src;src" --add-data "assets;assets" main.py --name "CertiActa"
+python scripts/build_exe.py
 ```
+
+Esto genera `dist/CertiActa/CertiActa.exe` y el paquete portátil `dist/CertiActa-v1.2.0-Windows-x64.zip` listo para distribuir.
 
 ---
 

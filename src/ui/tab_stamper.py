@@ -15,18 +15,30 @@ from typing import Callable, Optional
 
 import customtkinter as ctk
 
-from src.config import DIR_ORIGINALES, TIPOS_SESION
+import src.config as cfg
+from src.config import TIPOS_SESION
 from src.core.hasher import calcular_sha256
 from src.core.models import ActaRecord
 from src.core.pdf_stamper import PDFStampError, estampar_acta_pdf
+from src.core.settings import AppSettings
+from src.core.vault import VaultManager
 from src.repository.registry_repo import RegistryRepository
 
 
 class TabStamper(ctk.CTkScrollableFrame):
-    def __init__(self, master, repository: RegistryRepository, on_record_saved: Optional[Callable] = None):
+    def __init__(
+        self,
+        master,
+        repository: RegistryRepository,
+        on_record_saved: Optional[Callable] = None,
+        settings: Optional[AppSettings] = None,
+        vault: Optional[VaultManager] = None,
+    ):
         super().__init__(master)
         self.repo = repository
         self.on_record_saved = on_record_saved
+        self.settings = settings
+        self.vault = vault
 
         self.archivo_seleccionado: Optional[Path] = None
         self.hash_actual: str = ""
@@ -479,6 +491,11 @@ class TabStamper(ctk.CTkScrollableFrame):
         registro_anterior: Optional[ActaRecord] = None,
     ) -> None:
         try:
+            owner_pw = (
+                self.vault.derive_pdf_owner_password()
+                if (self.settings and self.settings.pdf_owner_protect and self.vault and self.vault.is_unlocked())
+                else None
+            )
             ruta_con_hash, sha_original, sha_generado, total_pags, ruta_resguardo = estampar_acta_pdf(
                 ruta_original=orig_path,
                 tipo_sesion=tipo_sesion,
@@ -487,6 +504,7 @@ class TabStamper(ctk.CTkScrollableFrame):
                 guardar_copia_en_originales=backup,
                 hash_precalculado=self.hash_actual or None,
                 es_sustitucion=es_sustitucion,
+                owner_password=owner_pw,
             )
 
             # Limpieza de archivos huérfanos en sustitución confirmada
@@ -502,7 +520,7 @@ class TabStamper(ctk.CTkScrollableFrame):
                     old_orig = Path(registro_anterior.ruta_archivo_original).resolve()
                     if (
                         old_orig != ruta_resguardo.resolve()
-                        and DIR_ORIGINALES.resolve() in old_orig.parents
+                        and cfg.DIR_ORIGINALES.resolve() in old_orig.parents
                         and old_orig.exists()
                     ):
                         try:

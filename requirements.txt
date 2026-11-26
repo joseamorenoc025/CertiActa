@@ -4,6 +4,8 @@
 customtkinter>=5.2.0
 PyMuPDF>=1.24.0
 Pillow>=10.0.0
+cryptography>=42.0.0
 
 # Herramientas de pruebas y desarrollo
 pytest>=8.0.0
+pyinstaller>=6.0.0
