@@ -4,18 +4,33 @@ Define constantes, rutas absolutas y asegura la existencia de la jerarquía de c
 """
 
 from pathlib import Path
+import sys
 from typing import Final
 
-# Directorio raíz del proyecto
-BASE_DIR: Final[Path] = Path(__file__).resolve().parent.parent
+# Detección de ejecución empaquetada (PyInstaller) vs desarrollo
+IS_FROZEN: Final[bool] = getattr(sys, "frozen", False)
+
+# Directorio raíz para datos persistentes (junto al .exe cuando está congelado)
+BASE_DIR: Final[Path] = (
+    Path(sys.executable).resolve().parent
+    if IS_FROZEN
+    else Path(__file__).resolve().parent.parent
+)
+
+# Directorio de recursos empaquetados (_MEIPASS en PyInstaller o BASE_DIR en desarrollo)
+RESOURCE_DIR: Final[Path] = (
+    Path(getattr(sys, "_MEIPASS", BASE_DIR))
+    if IS_FROZEN
+    else BASE_DIR
+)
 
 # Carpetas del sistema
 DIR_DATOS: Final[Path] = BASE_DIR / "datos"
 DIR_EXPORTACIONES: Final[Path] = DIR_DATOS / "exportaciones"
 DIR_ORIGINALES: Final[Path] = BASE_DIR / "01_Escaneos_Originales"
 DIR_CON_HASH: Final[Path] = BASE_DIR / "02_Actas_Con_Hash"
-DIR_ASSETS: Final[Path] = BASE_DIR / "assets"
-DIR_DOCS: Final[Path] = BASE_DIR / "docs"
+DIR_ASSETS: Final[Path] = RESOURCE_DIR / "assets"
+DIR_DOCS: Final[Path] = RESOURCE_DIR / "docs"
 
 # Archivos de persistencia y recursos
 FILE_REGISTRO: Final[Path] = DIR_DATOS / "registro_actas.json"

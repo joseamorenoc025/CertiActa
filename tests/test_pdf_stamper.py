@@ -5,11 +5,17 @@ y validación del sistema de doble huella SHA-256.
 
 from pathlib import Path
 import fitz
+import pytest
+
+import src.core.pdf_stamper as pdf_stamper_mod
 from src.core.hasher import calcular_sha256, verificar_sha256
-from src.core.pdf_stamper import estampar_acta_pdf
+from src.core.pdf_stamper import PDFStampError, estampar_acta_pdf
 
 
-def test_estampar_pdf_integridad_original(tmp_path: Path):
+def test_estampar_pdf_integridad_original(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(pdf_stamper_mod, "DIR_ORIGINALES", tmp_path / "01_Escaneos_Originales")
+    monkeypatch.setattr(pdf_stamper_mod, "DIR_CON_HASH", tmp_path / "02_Actas_Con_Hash")
+
     # 1. Crear un PDF de prueba de 2 páginas simulando un acta escaneada
     pdf_original = tmp_path / "acta_escaneada_original.pdf"
     doc_creado = fitz.open()
@@ -78,3 +84,77 @@ def test_estampar_pdf_integridad_original(tmp_path: Path):
     # Comprobar metadatos forenses inyectados
     assert "SHA256_ORIGINAL" in doc_verif.metadata.get("keywords", "")
     doc_verif.close()
+
+
+def test_collision_prevention_con_hash(tmp_path: Path, monkeypatch):
+    """Dos PDFs distintos con el mismo nombre (ej. escaner_001.pdf) no deben sobrescribirse."""
+    dir_orig = tmp_path / "01_Escaneos_Originales"
+    dir_hash = tmp_path / "02_Actas_Con_Hash"
+    monkeypatch.setattr(pdf_stamper_mod, "DIR_ORIGINALES", dir_orig)
+    monkeypatch.setattr(pdf_stamper_mod, "DIR_CON_HASH", dir_hash)
+
+    pdf1 = tmp_path / "lote1" / "escaner_001.pdf"
+    pdf2 = tmp_path / "lote2" / "escaner_001.pdf"
+    pdf1.parent.mkdir()
+    pdf2.parent.mkdir()
+
+    for idx, p in enumerate((pdf1, pdf2), start=1):
+        d = fitz.open()
+        page = d.new_page()
+        page.insert_text((50, 100), f"Contenido exclusivo del acta {idx}", fontsize=12)
+        d.save(str(p))
+        d.close()
+
+    out1, sha1, _, _, _ = estampar_acta_pdf(pdf1, "Ordinaria", "001-2026", "10/03/2026")
+    out2, sha2, _, _, _ = estampar_acta_pdf(pdf2, "Ordinaria", "002-2026", "11/03/2026")
+
+    assert out1.exists()
+    assert out2.exists()
+    assert out1 != out2
+    assert out1.name == "escaner_001_CON_HASH.pdf"
+    assert out2.name == f"escaner_001_{sha2[:8]}_CON_HASH.pdf"
+
+
+def test_encrypted_pdf_rejection(tmp_path: Path, monkeypatch):
+    """Un PDF protegido con contraseña debe ser rechazado con PDFStampError."""
+    monkeypatch.setattr(pdf_stamper_mod, "DIR_ORIGINALES", tmp_path / "orig")
+    monkeypatch.setattr(pdf_stamper_mod, "DIR_CON_HASH", tmp_path / "hash")
+
+    pdf_enc = tmp_path / "protegido.pdf"
+    d = fitz.open()
+    d.new_page().insert_text((50, 100), "Secreto")
+    d.save(
+        str(pdf_enc),
+        encryption=fitz.PDF_ENCRYPT_AES_256,
+        owner_pw="owner123",
+        user_pw="user123",
+    )
+    d.close()
+
+    with pytest.raises(PDFStampError, match="encriptado"):
+        estampar_acta_pdf(pdf_enc, "Especial", "005-2026", "12/03/2026")
+
+
+def test_rotated_page_stamping(tmp_path: Path, monkeypatch):
+    """El estampado debe funcionar correctamente en páginas con rotación de 90 grados."""
+    monkeypatch.setattr(pdf_stamper_mod, "DIR_ORIGINALES", tmp_path / "orig")
+    monkeypatch.setattr(pdf_stamper_mod, "DIR_CON_HASH", tmp_path / "hash")
+
+    pdf_rot = tmp_path / "rotado.pdf"
+    d = fitz.open()
+    page = d.new_page(width=595, height=842)
+    page.set_rotation(90)
+    page.insert_text((50, 100), "Acta en orientación horizontal")
+    d.save(str(pdf_rot))
+    d.close()
+
+    out_path, sha_orig, sha_gen, total_pags, _ = estampar_acta_pdf(
+        pdf_rot, "Solemne", "009-2026", "15/03/2026"
+    )
+    assert out_path.exists()
+    assert total_pags == 1
+    assert len(sha_gen) == 64
+
+    verif = fitz.open(str(out_path))
+    assert sha_orig in verif[0].get_text()
+    verif.close()

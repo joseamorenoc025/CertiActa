@@ -24,6 +24,7 @@ def estampar_acta_pdf(
     fecha_sesion: str,
     guardar_copia_en_originales: bool = True,
     hash_precalculado: Optional[str] = None,
+    es_sustitucion: bool = False,
 ) -> tuple[Path, str, str, int, Path]:
     """
     Procesa un PDF original escaneado:
@@ -54,30 +55,49 @@ def estampar_acta_pdf(
     ruta_resguardo = DIR_ORIGINALES / path_orig.name
     # Si la ruta seleccionada no es ya la que está en DIR_ORIGINALES, copiamos
     if guardar_copia_en_originales and path_orig != ruta_resguardo:
-        if ruta_resguardo.exists():
-            # Si ya existe un archivo con ese nombre pero distinto hash, usamos un sufijo seguro
-            existente_hash = calcular_sha256(ruta_resguardo)
-            if existente_hash != sha256_hash:
-                stem = path_orig.stem
-                ruta_resguardo = DIR_ORIGINALES / f"{stem}_{sha256_hash[:8]}.pdf"
+        try:
+            if ruta_resguardo.exists():
+                # Si ya existe un archivo con ese nombre pero distinto hash, usamos un sufijo seguro
+                existente_hash = calcular_sha256(ruta_resguardo)
+                if existente_hash != sha256_hash:
+                    stem = path_orig.stem
+                    ruta_resguardo = DIR_ORIGINALES / f"{stem}_{sha256_hash[:8]}.pdf"
+                    shutil.copy2(path_orig, ruta_resguardo)
+            else:
                 shutil.copy2(path_orig, ruta_resguardo)
-        else:
-            shutil.copy2(path_orig, ruta_resguardo)
+        except PermissionError as pe:
+            raise PDFStampError(
+                "El archivo PDF de destino está abierto en otro programa (Adobe Reader, Edge, etc.). "
+                "Ciérrelo e intente nuevamente."
+            ) from pe
     elif not guardar_copia_en_originales:
         ruta_resguardo = path_orig
 
-    # 3. Definir nombre y ruta de salida en 02_Actas_Con_Hash
+    # 3. Definir nombre y ruta de salida en 02_Actas_Con_Hash (con prevención de colisiones)
     nombre_base = path_orig.stem
     nombre_salida = f"{nombre_base}_CON_HASH.pdf"
     ruta_salida = DIR_CON_HASH / nombre_salida
+    if ruta_salida.exists() and not es_sustitucion:
+        ruta_salida = DIR_CON_HASH / f"{nombre_base}_{sha256_hash[:8]}_CON_HASH.pdf"
 
+    doc = None
     try:
         # Abrimos el original en modo lectura
         doc = fitz.open(str(path_orig))
+
+        if doc.is_encrypted:
+            doc.close()
+            doc = None
+            raise PDFStampError(
+                "El archivo PDF está encriptado o protegido con contraseña. "
+                "Desbloquéelo antes de procesarlo."
+            )
+
         total_paginas = len(doc)
 
         if total_paginas == 0:
             doc.close()
+            doc = None
             raise PDFStampError("El archivo PDF está vacío o no contiene páginas legibles.")
 
         # Recorremos cada página para estampar la leyenda
@@ -149,15 +169,29 @@ def estampar_acta_pdf(
         doc.set_metadata(meta)
 
         # Guardar en nuevo archivo con compresión y linearización
-        doc.save(
-            str(ruta_salida),
-            garbage=4,
-            deflate=True,
-            clean=True,
-        )
-        doc.close()
+        try:
+            doc.save(
+                str(ruta_salida),
+                garbage=4,
+                deflate=True,
+                clean=True,
+            )
+        except PermissionError as pe:
+            raise PDFStampError(
+                "El archivo PDF de destino está abierto en otro programa (Adobe Reader, Edge, etc.). "
+                "Ciérrelo e intente nuevamente."
+            ) from pe
+        finally:
+            if doc is not None:
+                doc.close()
+                doc = None
 
     except Exception as e:
+        if doc is not None:
+            try:
+                doc.close()
+            except Exception:
+                pass
         if isinstance(e, PDFStampError):
             raise
         raise PDFStampError(f"Ocurrió un error al procesar el PDF con PyMuPDF: {str(e)}") from e

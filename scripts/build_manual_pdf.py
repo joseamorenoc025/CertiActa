@@ -147,10 +147,10 @@ class ManualPDFBuilder:
 
         ficha_texto = (
             "FICHA TÉCNICA Y AUTORÍA DEL PROYECTO\n\n"
-            "• Aplicación: CertiActa v1.0.0 — Código Abierto (Licencia MIT)\n"
-            "• Operación: 100% Local en Windows 10/11 (sin internet ni servidores externos)\n"
-            "• Estándar Criptográfico: SHA-256 (256 bits) + PyMuPDF\n"
-            "• Creado por: José Moreno — Secretario de Cámara del Consejo Legislativo\n"
+            "- Aplicación: CertiActa v1.0.0 - Código Abierto (Licencia MIT)\n"
+            "- Operación: 100% Local en Windows 10/11 (sin internet ni servidores externos)\n"
+            "- Estándar Criptográfico: SHA-256 (256 bits) + PyMuPDF\n"
+            "- Creado por: José Moreno - Secretario de Cámara del Consejo Legislativo\n"
             "  del Estado Bolivariano Delta Amacuro"
         )
         p.insert_textbox(
@@ -386,7 +386,7 @@ class ManualPDFBuilder:
             # Encabezado sutil
             p.insert_text(
                 fitz.Point(self.margin_x, 36),
-                "CertiActa — Manual de Usuario Institucional",
+                "CertiActa - Manual de Usuario Institucional",
                 fontsize=8.5,
                 fontname="hebo",
                 color=TEXT_MUTED,
@@ -407,7 +407,7 @@ class ManualPDFBuilder:
             # Pie de página
             p.insert_text(
                 fitz.Point(self.margin_x, 765),
-                "Creado por José Moreno — Secretario de Cámara CLEBDA | Software Libre (MIT)",
+                "Creado por José Moreno - Secretario de Cámara CLEBDA | Software Libre (MIT)",
                 fontsize=8,
                 fontname="helv",
                 color=TEXT_MUTED,
@@ -457,7 +457,9 @@ def build_manual() -> Path:
         "CertiActa nace para modernizar ese proceso dejando atrás la transcripción física extensa de los "
         "libros de actas. A partir del escaneo íntegro del acta ya aprobada, firmada y sellada, el sistema "
         "genera una huella criptográfica matemática (SHA-256) y la estampa al pie de todas sus páginas, "
-        "logrando una fluidez inmediata entre la sesión, la aprobación del acta y su verificación futura."
+        "logrando una fluidez inmediata entre la sesión, la aprobación del acta y su verificación futura. "
+        "En términos administrativos, esto libera decenas de horas de trabajo secretarial por período, acelera "
+        "la entrega de copias certificadas a legisladores y comisiones, y garantiza trazabilidad inmediata para Contraloría."
     )
     b.add_diagram_comparative()
 
@@ -562,8 +564,8 @@ def build_manual() -> Path:
         "Por principio matemático, un archivo PDF no puede contener su propio hash SHA-256 final impreso en su "
         "interior (porque al escribir el texto cambian los bytes del archivo). Por ello, CertiActa registra dos "
         "huellas complementarias para cada acta:\n"
-        "• SHA-256 Original: Huella del escaneo intacto antes de estampar (impresa al pie de cada página).\n"
-        "• SHA-256 PDF Generado: Huella exacta del archivo distribuido (_CON_HASH.pdf)."
+        "- SHA-256 Original: Huella del escaneo intacto antes de estampar (impresa al pie de cada página).\n"
+        "- SHA-256 PDF Generado: Huella exacta del archivo distribuido (_CON_HASH.pdf)."
     )
 
     b.add_subtitle("4.2 Verificación dentro de CertiActa ('Auditar / Verificar')")
@@ -572,9 +574,9 @@ def build_manual() -> Path:
         "el hash obtenido del Libro Físico de Respaldo).\n"
         "2. Seleccione el archivo PDF recibido en la computadora del auditor y pulse 'Verificar Coincidencia'.\n"
         "3. Lectura del resultado:\n"
-        "   • VERDE (COINCIDE / VERIFICADO): El archivo es matemáticamente idéntico byte a byte y no ha sufrido "
+        "   - VERDE (COINCIDE / VERIFICADO): El archivo es matemáticamente idéntico byte a byte y no ha sufrido "
         "ninguna alteración desde su emisión.\n"
-        "   • ROJO (NO COINCIDE): El documento fue modificado, dañado o no corresponde al acta registrada."
+        "   - ROJO (NO COINCIDE): El documento fue modificado, dañado o no corresponde al acta registrada."
     )
 
     b.add_subtitle("4.3 Verificación Autónoma sin usar CertiActa (Herramientas de Windows)")
@@ -584,9 +586,9 @@ def build_manual() -> Path:
     )
     b.add_callout(
         "COMANDOS NATIVOS DE AUDITORÍA EN WINDOWS",
-        "• En PowerShell:\n"
+        "- En PowerShell:\n"
         "  Get-FileHash \"ruta\\al\\Acta_CON_HASH.pdf\" -Algorithm SHA256\n\n"
-        "• En Símbolo del Sistema (CMD):\n"
+        "- En Símbolo del Sistema (CMD):\n"
         "  certutil -hashfile \"ruta\\al\\Acta_CON_HASH.pdf\" SHA256\n\n"
         "Compare el código resultante con el SHA-256 registrado en el Libro Físico o en el reporte CSV.",
         kind="blue",
@@ -599,11 +601,13 @@ def build_manual() -> Path:
         "Operadores y Administradores de Tecnología",
     )
     b.add_paragraph(
-        "• ¿El programa requiere conexión a internet?\n"
+        "- ¿El programa requiere conexión a internet?\n"
         "  No. Toda operación criptográfica y de almacenamiento ocurre exclusivamente en el equipo local.\n\n"
-        "• ¿Qué hago si aparece un error al guardar un PDF ya existente?\n"
+        "- ¿Qué hago si aparece un error al guardar un PDF ya existente?\n"
         "  Verifique que el archivo _CON_HASH.pdf no esté abierto en Adobe Reader, Edge u otro visor PDF.\n\n"
-        "• ¿Pueden otros Consejos Legislativos o Concejos Municipales utilizar CertiActa?\n"
+        "- ¿Cómo realizo un respaldo preventivo rápido?\n"
+        "  En 'Registro Local', presione 'Respaldo ZIP' para empaquetar en un clic el registro JSON y todos los PDFs.\n\n"
+        "- ¿Pueden otros Consejos Legislativos o Concejos Municipales utilizar CertiActa?\n"
         "  Sí. El proyecto se distribuye bajo Licencia MIT de código abierto, conservando el reconocimiento a su "
         "autor original: José Moreno, Secretario de Cámara del Consejo Legislativo del Estado Bolivariano Delta Amacuro.",
         space_after=4,

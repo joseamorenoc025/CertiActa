@@ -4,6 +4,7 @@ Permite visualizar, buscar en tiempo real, filtrar, copiar hashes,
 enviar al verificador y exportar a CSV los registros guardados.
 """
 
+from datetime import datetime
 import os
 from pathlib import Path
 import subprocess
@@ -11,9 +12,17 @@ import sys
 import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Callable, Optional
+import zipfile
 
 import customtkinter as ctk
 
+from src.config import (
+    DIR_CON_HASH,
+    DIR_EXPORTACIONES,
+    DIR_ORIGINALES,
+    FILE_REGISTRO,
+    TIPOS_SESION,
+)
 from src.core.models import ActaRecord
 from src.repository.registry_repo import RegistryRepository
 
@@ -52,8 +61,18 @@ class TabRecords(ctk.CTkFrame):
             placeholder_text="Escriba tipo, número, fecha, nombre de archivo o hash...",
             font=ctk.CTkFont(size=12),
         )
-        self.entry_search.pack(side="left", fill="x", expand=True, padx=(0, 10), pady=10)
+        self.entry_search.pack(side="left", fill="x", expand=True, padx=(0, 8), pady=10)
         self.entry_search.bind("<KeyRelease>", self._on_search_key)
+
+        self.combo_filter_tipo = ctk.CTkComboBox(
+            bar_top,
+            values=["Todos"] + TIPOS_SESION,
+            state="readonly",
+            width=140,
+            command=self._on_filter_change,
+        )
+        self.combo_filter_tipo.set("Todos")
+        self.combo_filter_tipo.pack(side="left", padx=(0, 8), pady=10)
 
         self.btn_clear_search = ctk.CTkButton(
             bar_top,
@@ -77,29 +96,10 @@ class TabRecords(ctk.CTkFrame):
         frame_table = ctk.CTkFrame(self, corner_radius=10)
         frame_table.pack(fill="both", expand=True, padx=15, pady=(0, 8))
 
-        # Estilo para ttk.Treeview
-        style = ttk.Style()
-        style.theme_use("clam")
-        style.configure(
-            "Actas.Treeview",
-            background="#1e1e1e",
-            foreground="#f0f0f0",
-            fieldbackground="#1e1e1e",
-            rowheight=26,
-            font=("Segoe UI", 10),
-        )
-        style.configure(
-            "Actas.Treeview.Heading",
-            background="#2d3748",
-            foreground="#ffffff",
-            relief="flat",
-            font=("Segoe UI", 10, "bold"),
-        )
-        style.map(
-            "Actas.Treeview",
-            background=[("selected", "#1f6aa5")],
-            foreground=[("selected", "#ffffff")],
-        )
+        # Estilo para ttk.Treeview (sincronizado con el tema)
+        self._tree_style = ttk.Style()
+        self._tree_style.theme_use("clam")
+        self.apply_treeview_theme("dark")
 
         columns = ("num", "tipo", "fecha", "archivo", "pags", "fecha_reg", "sha256")
         self.tree = ttk.Treeview(
@@ -238,11 +238,21 @@ class TabRecords(ctk.CTkFrame):
             bar_actions,
             text="📊 Exportar a CSV",
             command=self._on_export_csv,
-            width=130,
+            width=125,
             fg_color="#334455",
             hover_color="#223344",
         )
         self.btn_export_csv.pack(side="left", padx=(0, 8))
+
+        self.btn_backup_zip = ctk.CTkButton(
+            bar_actions,
+            text="💾 Respaldo ZIP",
+            command=self._on_backup_zip,
+            width=125,
+            fg_color="#4a5568",
+            hover_color="#2d3748",
+        )
+        self.btn_backup_zip.pack(side="left", padx=(0, 8))
 
         self.btn_refresh = ctk.CTkButton(
             bar_actions,
@@ -254,13 +264,51 @@ class TabRecords(ctk.CTkFrame):
         )
         self.btn_refresh.pack(side="right")
 
+    def apply_treeview_theme(self, mode: str) -> None:
+        """Sincroniza los colores del Treeview con el modo de apariencia actual."""
+        resolved = mode.lower()
+        if resolved == "system":
+            resolved = ctk.get_appearance_mode().lower()
+
+        if resolved == "light":
+            bg, fg, head_bg, head_fg = "#ffffff", "#1f2328", "#e2e8f0", "#1f2328"
+        else:
+            bg, fg, head_bg, head_fg = "#1e1e1e", "#f0f0f0", "#2d3748", "#ffffff"
+
+        self._tree_style.configure(
+            "Actas.Treeview",
+            background=bg,
+            foreground=fg,
+            fieldbackground=bg,
+            rowheight=26,
+            font=("Segoe UI", 10),
+        )
+        self._tree_style.configure(
+            "Actas.Treeview.Heading",
+            background=head_bg,
+            foreground=head_fg,
+            relief="flat",
+            font=("Segoe UI", 10, "bold"),
+        )
+        self._tree_style.map(
+            "Actas.Treeview",
+            background=[("selected", "#1f6aa5")],
+            foreground=[("selected", "#ffffff")],
+        )
+
     def refresh_records(self) -> None:
         """Carga y renderiza los registros en la tabla."""
         query = self.entry_search.get().strip() if hasattr(self, "entry_search") else ""
         if query:
-            self.registros_actuales = self.repo.search(query)
+            records = self.repo.search(query)
         else:
-            self.registros_actuales = self.repo.get_all()
+            records = self.repo.get_all()
+
+        tipo_filtro = self.combo_filter_tipo.get() if hasattr(self, "combo_filter_tipo") else "Todos"
+        if tipo_filtro and tipo_filtro != "Todos":
+            records = [r for r in records if r.tipo_sesion.strip().lower() == tipo_filtro.strip().lower()]
+
+        self.registros_actuales = records
 
         # Limpiar filas existentes
         for item in self.tree.get_children():
@@ -291,8 +339,13 @@ class TabRecords(ctk.CTkFrame):
     def _on_search_key(self, event=None) -> None:
         self.refresh_records()
 
+    def _on_filter_change(self, choice: str = "Todos") -> None:
+        self.refresh_records()
+
     def _on_clear_search(self) -> None:
         self.entry_search.delete(0, "end")
+        if hasattr(self, "combo_filter_tipo"):
+            self.combo_filter_tipo.set("Todos")
         self.refresh_records()
 
     def _on_row_select(self, event=None) -> None:
@@ -410,3 +463,46 @@ class TabRecords(ctk.CTkFrame):
                     subprocess.run(["xdg-open", str(ruta_csv)])
         except Exception as e:
             messagebox.showerror("Error al Exportar", f"No se pudo completar la exportación a CSV:\n{str(e)}")
+
+    def _on_backup_zip(self) -> None:
+        """Genera un archivo ZIP de respaldo preventivo con registro y carpetas de actas."""
+        try:
+            zip_path = self.crear_respaldo_zip()
+            resp = messagebox.askyesno(
+                "Respaldo ZIP Generado",
+                f"Se creó exitosamente el respaldo preventivo:\n\n"
+                f"• Archivo: {zip_path.name}\n"
+                f"• Ubicación: {zip_path.parent}\n\n"
+                f"¿Desea abrir la carpeta de exportaciones?",
+            )
+            if resp:
+                if sys.platform == "win32":
+                    subprocess.run(["explorer", str(zip_path.parent)])
+                else:
+                    subprocess.run(["xdg-open", str(zip_path.parent)])
+        except Exception as e:
+            messagebox.showerror("Error de Respaldo", f"No se pudo crear el respaldo ZIP:\n{str(e)}")
+
+    @staticmethod
+    def crear_respaldo_zip(output_dir: Optional[Path] = None) -> Path:
+        """Empaqueta el registro JSON y las carpetas de PDFs en un archivo ZIP con marca de tiempo."""
+        dest_dir = Path(output_dir) if output_dir else DIR_EXPORTACIONES
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        zip_path = dest_dir / f"respaldo_certiacta_{timestamp}.zip"
+
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            if FILE_REGISTRO.exists():
+                zf.write(FILE_REGISTRO, arcname=f"datos/{FILE_REGISTRO.name}")
+
+            for folder_name, folder_path in (
+                ("01_Escaneos_Originales", DIR_ORIGINALES),
+                ("02_Actas_Con_Hash", DIR_CON_HASH),
+            ):
+                if folder_path.exists():
+                    for file_path in folder_path.rglob("*"):
+                        if file_path.is_file():
+                            rel = file_path.relative_to(folder_path)
+                            zf.write(file_path, arcname=f"{folder_name}/{rel}")
+
+        return zip_path

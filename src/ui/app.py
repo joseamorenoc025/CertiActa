@@ -118,7 +118,9 @@ class App(ctk.CTk):
 
     def _on_change_theme(self, choice: str) -> None:
         mapping = {"Oscuro": "dark", "Claro": "light", "Sistema": "system"}
-        ctk.set_appearance_mode(mapping.get(choice, "dark"))
+        mode = mapping.get(choice, "dark")
+        ctk.set_appearance_mode(mode)
+        self.tab_records.apply_treeview_theme(mode)
 
     def _on_record_saved(self) -> None:
         """Notificación disparada cuando se estampa y guarda una nueva acta."""

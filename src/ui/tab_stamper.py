@@ -15,7 +15,7 @@ from typing import Callable, Optional
 
 import customtkinter as ctk
 
-from src.config import TIPOS_SESION
+from src.config import DIR_ORIGINALES, TIPOS_SESION
 from src.core.hasher import calcular_sha256
 from src.core.models import ActaRecord
 from src.core.pdf_stamper import PDFStampError, estampar_acta_pdf
@@ -334,9 +334,11 @@ class TabStamper(ctk.CTkScrollableFrame):
     def _async_calc_hash(self, path: Path) -> None:
         try:
             h = calcular_sha256(path)
-            self.hash_actual = h
 
             def update_ui():
+                if self.archivo_seleccionado != path:
+                    return
+                self.hash_actual = h
                 self.progressbar.stop()
                 self.progressbar.configure(mode="determinate")
                 self.progressbar.set(1.0)
@@ -357,6 +359,8 @@ class TabStamper(ctk.CTkScrollableFrame):
             err_msg = str(e)
 
             def err_ui(msg: str = err_msg):
+                if self.archivo_seleccionado != path:
+                    return
                 self.progressbar.stop()
                 self.progressbar.set(0)
                 self.lbl_status.configure(text=f"Error al calcular hash: {msg}", text_color="#cf222e")
@@ -413,6 +417,32 @@ class TabStamper(ctk.CTkScrollableFrame):
             self.entry_fecha.focus()
             return
 
+        try:
+            datetime.strptime(fecha_sesion, "%d/%m/%Y")
+        except ValueError:
+            messagebox.showwarning(
+                "Formato de Fecha Inválido",
+                "Por favor ingrese una fecha válida en formato DD/MM/AAAA (ej: 24/11/2026).",
+            )
+            self.entry_fecha.focus()
+            return
+
+        # Verificar si la sesión ya existe para confirmar sustitución
+        registro_anterior = self.repo.find_by_sesion(tipo_sesion, num_sesion)
+        es_sustitucion = False
+        if registro_anterior is not None:
+            confirmar = messagebox.askyesno(
+                "Sesión Ya Registrada",
+                f"Ya existe un registro para la sesión {registro_anterior.tipo_sesion} "
+                f"N.° {registro_anterior.num_sesion} (Fecha: {registro_anterior.fecha_sesion}).\n\n"
+                f"• Archivo actual: {registro_anterior.nombre_archivo_con_hash}\n"
+                f"• Registrado el: {registro_anterior.fecha_registro}\n\n"
+                f"¿Desea sustituir este registro y actualizar sus archivos con el nuevo PDF?",
+            )
+            if not confirmar:
+                return
+            es_sustitucion = True
+
         # Deshabilitar botón durante procesamiento
         self.btn_procesar.configure(state="disabled")
         self.btn_select_file.configure(state="disabled")
@@ -424,7 +454,16 @@ class TabStamper(ctk.CTkScrollableFrame):
 
         threading.Thread(
             target=self._async_stamp,
-            args=(self.archivo_seleccionado, tipo_sesion, num_sesion, fecha_sesion, obs, self.chk_backup_var.get()),
+            args=(
+                self.archivo_seleccionado,
+                tipo_sesion,
+                num_sesion,
+                fecha_sesion,
+                obs,
+                self.chk_backup_var.get(),
+                es_sustitucion,
+                registro_anterior,
+            ),
             daemon=True,
         ).start()
 
@@ -436,6 +475,8 @@ class TabStamper(ctk.CTkScrollableFrame):
         fecha_sesion: str,
         observacion: str,
         backup: bool,
+        es_sustitucion: bool = False,
+        registro_anterior: Optional[ActaRecord] = None,
     ) -> None:
         try:
             ruta_con_hash, sha_original, sha_generado, total_pags, ruta_resguardo = estampar_acta_pdf(
@@ -445,7 +486,29 @@ class TabStamper(ctk.CTkScrollableFrame):
                 fecha_sesion=fecha_sesion,
                 guardar_copia_en_originales=backup,
                 hash_precalculado=self.hash_actual or None,
+                es_sustitucion=es_sustitucion,
             )
+
+            # Limpieza de archivos huérfanos en sustitución confirmada
+            if es_sustitucion and registro_anterior is not None:
+                if registro_anterior.ruta_archivo_con_hash:
+                    old_con_hash = Path(registro_anterior.ruta_archivo_con_hash).resolve()
+                    if old_con_hash != ruta_con_hash.resolve() and old_con_hash.exists():
+                        try:
+                            old_con_hash.unlink()
+                        except OSError:
+                            pass
+                if registro_anterior.ruta_archivo_original:
+                    old_orig = Path(registro_anterior.ruta_archivo_original).resolve()
+                    if (
+                        old_orig != ruta_resguardo.resolve()
+                        and DIR_ORIGINALES.resolve() in old_orig.parents
+                        and old_orig.exists()
+                    ):
+                        try:
+                            old_orig.unlink()
+                        except OSError:
+                            pass
 
             self.hash_generado = sha_generado
 

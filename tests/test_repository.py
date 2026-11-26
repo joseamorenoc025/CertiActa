@@ -151,3 +151,57 @@ def test_sobrescritura_silenciosa_por_sesion_y_ficha_libro_fisico(tmp_path: Path
     assert "12-2026" in ficha
     assert "3" * 64 in ficha
     assert "4" * 64 in ficha
+
+
+def test_find_by_sesion(tmp_path: Path):
+    """Verifica búsqueda exacta por tipo y número de sesión (insensible a mayúsculas/espacios)."""
+    repo = RegistryRepository(tmp_path / "sesion_lookup.json")
+    rec = ActaRecord.create(
+        tipo_sesion="Extraordinaria",
+        num_sesion="007-2026",
+        fecha_sesion="20/04/2026",
+        observacion="",
+        nombre_archivo_original="ext_007.pdf",
+        ruta_archivo_original="/r/ext_007.pdf",
+        nombre_archivo_con_hash="ext_007_CON_HASH.pdf",
+        ruta_archivo_con_hash="/r/ext_007_CON_HASH.pdf",
+        sha256_original="e" * 64,
+        total_paginas=2,
+        sha256_con_hash="f" * 64,
+    )
+    repo.add(rec)
+
+    assert repo.find_by_sesion("extraordinaria", " 007-2026 ") is not None
+    assert repo.find_by_sesion("Ordinaria", "007-2026") is None
+    assert repo.find_by_sesion("Extraordinaria", "") is None
+
+
+def test_backup_zip(tmp_path: Path, monkeypatch):
+    """Verifica la generación del archivo ZIP de respaldo preventivo."""
+    import zipfile
+    import src.ui.tab_records as tab_rec_mod
+
+    file_reg = tmp_path / "datos" / "registro_actas.json"
+    dir_orig = tmp_path / "01_Escaneos_Originales"
+    dir_hash = tmp_path / "02_Actas_Con_Hash"
+    dir_exp = tmp_path / "datos" / "exportaciones"
+
+    file_reg.parent.mkdir(parents=True)
+    dir_orig.mkdir()
+    dir_hash.mkdir()
+
+    file_reg.write_text("[]", encoding="utf-8")
+    (dir_orig / "orig_01.pdf").write_bytes(b"orig")
+    (dir_hash / "orig_01_CON_HASH.pdf").write_bytes(b"hash")
+
+    monkeypatch.setattr(tab_rec_mod, "FILE_REGISTRO", file_reg)
+    monkeypatch.setattr(tab_rec_mod, "DIR_ORIGINALES", dir_orig)
+    monkeypatch.setattr(tab_rec_mod, "DIR_CON_HASH", dir_hash)
+
+    zip_path = tab_rec_mod.TabRecords.crear_respaldo_zip(output_dir=dir_exp)
+    assert zip_path.exists()
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        names = set(zf.namelist())
+        assert "datos/registro_actas.json" in names
+        assert "01_Escaneos_Originales/orig_01.pdf" in names
+        assert "02_Actas_Con_Hash/orig_01_CON_HASH.pdf" in names

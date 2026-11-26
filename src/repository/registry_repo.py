@@ -89,6 +89,20 @@ class RegistryRepository:
             # Reemplazo atómico compatible con Windows
             os.replace(tmp_path, self.json_path)
 
+    def find_by_sesion(self, tipo_sesion: str, num_sesion: str) -> Optional[ActaRecord]:
+        """Busca un registro existente por tipo y número de sesión (case-insensitive)."""
+        norm_tipo = tipo_sesion.strip().lower()
+        norm_num = num_sesion.strip().lower()
+        if not norm_num:
+            return None
+        for r in self.get_all():
+            if (
+                r.tipo_sesion.strip().lower() == norm_tipo
+                and r.num_sesion.strip().lower() == norm_num
+            ):
+                return r
+        return None
+
     def find_by_hash(self, sha256_hash: str) -> Optional[ActaRecord]:
         """Busca un registro por su hash SHA-256 (original o generado)."""
         sha_limpio = sha256_hash.strip().lower()
